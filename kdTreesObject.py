@@ -49,6 +49,9 @@ class KdTree(object):
 			# Would rather have an error message
 			return None
 
+		if len(image) == 0:
+			return None
+
 		# if len(image.shape) != 3:
 		# 	return None
 
@@ -57,7 +60,7 @@ class KdTree(object):
 
 		#image = image.reshape(-1, 3)
 
-		axis = (self.depth_limit - depth_limit) % 3
+		axis = abs(self.depth_limit - depth_limit) % 3
 
 		self.axis_list.append(axis)
 
@@ -66,11 +69,13 @@ class KdTree(object):
 	
 		median_index = len(sortted_array)//2
 		median = image[median_index]
+
+		median_index = image[:, axis].tolist().index(median[axis])
 		self.median_list.append((median, depth_limit))
 		cur_node = KdNode(median)
 		#print(median)
 
-		cur_node.set_left(self.create_kd_tree(image[0:median_index], depth_limit-1))
+		cur_node.set_left(self.create_kd_tree(image[:median_index], depth_limit-1))
 		cur_node.set_right(self.create_kd_tree(image[median_index:], depth_limit-1))
 
 		return cur_node
@@ -118,7 +123,7 @@ class KdTree(object):
 		ret = None
 		while not cur_node is None:
 			cur_val = cur_node.value
-			ret = cur_node
+			
 			left = cur_node.get_left()
 			right = cur_node.get_right()
 
@@ -126,18 +131,21 @@ class KdTree(object):
 				pass
 			if right is None:
 				pass
+
+			ret = cur_node
+
 			if value[dimension % 3] < cur_val[dimension % 3]:
 				cur_node = left
 			else:
 				cur_node = right
-
+			dimension += 1
 
 		return ret.value
 
 
 def main():
 	quantize_input = cv2.imread("quantize_input.png")
-	kd_tree = KdTree(quantize_input, 15)
+	kd_tree = KdTree(quantize_input, 10)
 	#kd_tree.visualize_kd_tree()
 	m_list = [m for m, d in kd_tree.median_list]
 	m_list = np.vstack(m_list)
@@ -151,7 +159,8 @@ def main():
 	
 	quantize_output = quantize_output.astype('uint8') 
 	#quantize_output = cv2.cvtColor(quantize_output.astype('uint8'), cv2.COLOR_BGR2RGB)
-
+	print(quantize_input)
+	print("Quantized")
 	print(quantize_output)
 	cv2.imshow("quant", quantize_output)
 	cv2.waitKey(0)
