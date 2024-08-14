@@ -52,13 +52,6 @@ class KdTree(object):
 		if len(image) == 0:
 			return None
 
-		# if len(image.shape) != 3:
-		# 	return None
-
-		# if image.shape[2] != 3:
-		# 	return None 
-
-		#image = image.reshape(-1, 3)
 
 		axis = abs(self.depth_limit - depth_limit) % 3
 
@@ -79,6 +72,34 @@ class KdTree(object):
 		cur_node.set_right(self.create_kd_tree(image[median_index:], depth_limit-1))
 
 		return cur_node
+
+
+	def find_mapping_value(self, value):
+		depth_limit = self.depth_limit
+		cur_node = self.kd_tree
+		#value = None
+		dimension = 0
+		ret = None
+		while not cur_node is None:
+			cur_val = cur_node.value
+			
+			left = cur_node.get_left()
+			right = cur_node.get_right()
+
+			if left is None:
+				pass
+			if right is None:
+				pass
+
+			ret = cur_node
+
+			if value[dimension % 3] < cur_val[dimension % 3]:
+				cur_node = left
+			else:
+				cur_node = right
+			dimension += 1
+
+		return ret.value
 
 	def visualize_kd_tree(self, hsv=False):
 		image = self.image.reshape(-1, 3)
@@ -115,37 +136,10 @@ class KdTree(object):
 		
 		plt.show()
 
-	def find_mapping_value(self, value):
-		depth_limit = self.depth_limit
-		cur_node = self.kd_tree
-		#value = None
-		dimension = 0
-		ret = None
-		while not cur_node is None:
-			cur_val = cur_node.value
-			
-			left = cur_node.get_left()
-			right = cur_node.get_right()
-
-			if left is None:
-				pass
-			if right is None:
-				pass
-
-			ret = cur_node
-
-			if value[dimension % 3] < cur_val[dimension % 3]:
-				cur_node = left
-			else:
-				cur_node = right
-			dimension += 1
-
-		return ret.value
-
 
 def main():
 	quantize_input = cv2.imread("quantize_input.png")
-	kd_tree = KdTree(quantize_input, 10)
+	kd_tree = KdTree(quantize_input, 12)
 	#kd_tree.visualize_kd_tree()
 	m_list = [m for m, d in kd_tree.median_list]
 	m_list = np.vstack(m_list)
