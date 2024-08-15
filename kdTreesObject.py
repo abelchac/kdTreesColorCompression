@@ -7,11 +7,13 @@ from webcolors import rgb_to_hex
 #https://www.ri.cmu.edu/pub_files/pub1/moore_andrew_1991_1/moore_andrew_1991_1.pdf
 class KdNode(object):
 	"""docstring for KdTree"""
-	def __init__(self, value):
+	def __init__(self, value, axis):
 		super(KdNode, self).__init__()
 		self.value = value
+		self.axis = axis
 		self._left = None
 		self._right = None
+
 
 	def get_left(self):
 		return self._left
@@ -52,24 +54,45 @@ class KdTree(object):
 		if len(image) == 0:
 			return None
 
+		left_array_arg = None
+		right_array_arg = None
+		cov = None
+		axis_final = None
+		for i in range(3):
+			axis = abs(self.depth_limit - depth_limit) % 3
 
-		axis = abs(self.depth_limit - depth_limit) % 3
+			self.axis_list.append(axis)
 
-		self.axis_list.append(axis)
+			sortted_array = image[image[:, axis].argsort()]
+			
 
-		sortted_array = image[image[:, axis].argsort()]
-		
-	
-		median_index = len(sortted_array)//2
-		median = image[median_index]
+			median_index = len(sortted_array)//2
+			median = image[median_index]
+			median_index = image[:, axis].tolist().index(median[axis])
+			
+			
 
-		median_index = image[:, axis].tolist().index(median[axis])
-		self.median_list.append((median, depth_limit))
-		cur_node = KdNode(median)
+			left_array = image[:median_index]
+			right_array = image[median_index:]
+			cur_cov = np.cov(left_array[:, axis]) + np.cov(right_array[:, axis])
+
+			if cov is None or cur_cov < cov:
+				axis_final = axis
+				cov = cur_cov
+				median_index_final = median_index
+				median_final = median
+
+		cur_node = KdNode(median_index_final, axis_final)
+		left_array_arg = image[:median_index_final]
+		right_array_arg = image[median_index_final:]
+
+
+		self.median_list.append((median_final, depth_limit))
+
 		#print(median)
 
-		cur_node.set_left(self.create_kd_tree(image[:median_index], depth_limit-1))
-		cur_node.set_right(self.create_kd_tree(image[median_index:], depth_limit-1))
+		cur_node.set_left(self.create_kd_tree(left_array_arg, depth_limit-1))
+		cur_node.set_right(self.create_kd_tree(right_array_arg, depth_limit-1))
 
 		return cur_node
 
@@ -82,7 +105,7 @@ class KdTree(object):
 		ret = None
 		while not cur_node is None:
 			cur_val = cur_node.value
-			
+			axis = cur_node.axis
 			left = cur_node.get_left()
 			right = cur_node.get_right()
 
@@ -93,7 +116,7 @@ class KdTree(object):
 
 			ret = cur_node
 
-			if value[dimension % 3] < cur_val[dimension % 3]:
+			if value[axis] < cur_val[axis]:
 				cur_node = left
 			else:
 				cur_node = right
@@ -139,7 +162,7 @@ class KdTree(object):
 
 def main():
 	quantize_input = cv2.imread("quantize_input.png")
-	kd_tree = KdTree(quantize_input, 12)
+	kd_tree = KdTree(quantize_input, 13)
 	#kd_tree.visualize_kd_tree()
 	m_list = [m for m, d in kd_tree.median_list]
 	m_list = np.vstack(m_list)
