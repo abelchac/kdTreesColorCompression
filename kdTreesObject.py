@@ -8,12 +8,13 @@ import heapq as hq
 #https://www.ri.cmu.edu/pub_files/pub1/moore_andrew_1991_1/moore_andrew_1991_1.pdf
 class KdNode(object):
 	"""docstring for KdTree"""
-	def __init__(self, value, axis):
+	def __init__(self, value, axis, image_view):
 		super(KdNode, self).__init__()
 		self.value = value
 		self.axis = axis
 		self._left = None
 		self._right = None
+		self.image_view = image_view
 
 
 	def get_left(self):
@@ -33,16 +34,16 @@ class KdNode(object):
 
 class KdTree(object):
 	"""docstring for KdTree"""
-	def __init__(self, image, depth_limit):
+	def __init__(self, image, colors):
 		super(KdTree, self).__init__()
 		self.image_org = image.copy()
 		self.image = image.reshape(-1, 3)
 
-		self.depth_limit = depth_limit
+		self.colors = colors
 		self.median_list = []
 		self.axis_list = []
 		self.slice_queue = self.get_slices(self.image_org)
-		self.kd_tree = self.create_kd_tree(self.image, self.depth_limit, self.image_org)
+		self.kd_tree = self.create_kd_tree(self.image, self.colors, self.image_org)
 
 	def get_slices(self, image=None):
 
@@ -71,28 +72,32 @@ class KdTree(object):
 
 			for th in range(min_range, max_range):
 				var = otsu_intraclass_variance(image[:,i], th)
-				otsu_vars.append((var, i, th))
+				otsu_vars.append((var, (i, th)))
 				otsu_vars_only.append(var)
 			covariances = covariances + (otsu_vars)
-			covariances_only.append(otsu_vars_only)
-		print
+			covariances_only += otsu_vars_only
 		
+		
+		ret_cov = None
+		if len(covariances) > 0:
+			cov_array = np.asarray(covariances_only)
+			ret_cov = covariances[cov_array.argmin()]
+			#print(ret_cov)
 
-		hq.heapify(covariances)
 		#fig, ax_lst = plt.subplots(1, 3)
 		#ax_lst[0].scatter(range(len(covariances_only[0])), covariances_only[0])
 		#ax_lst[1].scatter(range(len(covariances_only[1])), covariances_only[1])
 		#ax_lst[2].scatter(range(len(covariances_only[2])), covariances_only[2])
 		#plt.show()
 
-		print(covariances[0])
-		return covariances
+		
+		return ret_cov
 
 
-	def create_kd_tree(self, image, depth_limit, crop_image=None):
+	def create_kd_tree(self, image, colors, crop_image=None):
 		headNode = None
 
-		if depth_limit <= 0:
+		if colors <= 0:
 			return None
 
 		if image is None:
@@ -108,59 +113,92 @@ class KdTree(object):
 		cov = None
 		axis_final = None
 
-		slice_queue_instance = self.get_slices(image)
 
-		if len(slice_queue_instance) == 0:
-			return None
+		slice_heap = []
 
-		axis = slice_queue_instance[0][1]
+		image_cur = image
 
+		slice_queue_instance = self.get_slices(image_cur)
+
+		axis = slice_queue_instance[1][0]
 		image = image[image[:, axis].argsort()]
+		threshold = slice_queue_instance[1][1]
+
+		headNode = KdNode(threshold, axis, image_cur)
+		cur_node = headNode
+
+		heap_value = (slice_queue_instance[0], (slice_queue_instance[1], headNode))
+		hq.heappush(slice_heap, heap_value)
+
+		for i in range(colors):
+
+			cur_node = hq.heappop(slice_heap)
+			print("CURNODE", cur_node)
+			(variance, ((axis, threshold) , cur_kd_node)) = cur_node
+
+			
+
+			if slice_queue_instance is None:
+				return None
+
 		
+			image = cur_kd_node.image_view[image[:, axis].argsort()]
+			
+			self.axis_list.append(axis)
+			self.median_list.append((threshold, colors))
 
-		#median_index = len(sortted_array)//2
-		median = slice_queue_instance[0][2]
-		
+			left_array_arg = image[image[:, axis] < threshold]
+			right_array_arg = image[image[:, axis] >= threshold]
 
-		left_array_arg = image[image[:, axis] < median]
-		right_array_arg = image[image[:, axis] >= median]
+			if len(left_array_arg) > 0:
+				slice_queue_instance_left = self.get_slices(left_array_arg)
 
-		if len(right_array_arg) != 0:
-			median = right_array_arg[0]
-		else:
-			median = left_array_arg[-1]
+				axis = slice_queue_instance_left[1][0]
+				#image = left_array_arg[left_array_arg[:, axis].argsort()]
+				threshold = slice_queue_instance_left[1][1]
+				leftNode = KdNode(threshold, axis, left_array_arg)
+				cur_kd_node.set_left(leftNode)
 
-		median_final = median
-		axis_final = axis
+				heap_value = (slice_queue_instance_left[0], (slice_queue_instance_left[1], leftNode))
+				print(heap_value)
+				hq.heappush(slice_heap, heap_value)
+
+			if len(right_array_arg) > 0:
+				slice_queue_instance_right = self.get_slices(right_array_arg)
+
+				axis = slice_queue_instance_right[1][0]
+				image = left_array_arg[left_array_arg[:, axis].argsort()]
+				threshold = slice_queue_instance_right[1][1]
+				rightNode = KdNode(threshold, axis, right_array_arg)
+				cur_kd_node.set_right(rightNode)
+
+				heap_value = (slice_queue_instance_right[0], (slice_queue_instance_right[1], rightNode))
+				hq.heappush(slice_heap, heap_value)
 
 
 
-		self.axis_list.append(axis_final)
-		self.median_list.append((median_final, depth_limit))
-		cur_node = KdNode(median_final, axis_final)
 
-		#print(median)
 
-		cur_node.set_left(self.create_kd_tree(left_array_arg, depth_limit-1))
-		cur_node.set_right(self.create_kd_tree(right_array_arg, depth_limit-1))
-
-		return cur_node
+		return headNode
 
 
 	def find_mapping_value(self, value):
-		depth_limit = self.depth_limit
+		depth_limit = self.colors
 		cur_node = self.kd_tree
 		#value = None
 		dimension = 0
 		ret = None
+		pixel_values_ret = [value[0], value[1], value[2]]
+
 		while not cur_node is None:
 			cur_val = cur_node.value
 			axis = cur_node.axis
 			left = cur_node.get_left()
 			right = cur_node.get_right()
 			ret = cur_node
+			pixel_values_ret[axis] = cur_val
 
-			if value[axis] < cur_val[axis]:
+			if value[axis] < cur_val:
 				#print(value[axis], cur_val, "left", str(axis))
 				cur_node = left
 			else:
@@ -168,7 +206,7 @@ class KdTree(object):
 				cur_node = right
 			dimension += 1
 
-		return ret.value
+		return pixel_values_ret
 
 	def visualize_kd_slices(self, hsv=False):
 		image = self.image.reshape(-1, 3)
