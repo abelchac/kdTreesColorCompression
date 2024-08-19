@@ -71,7 +71,7 @@ class KdTree(object):
 
 			for th in range(min_range, max_range):
 				var = otsu_intraclass_variance(image[:,i], th)
-				otsu_vars.append((var, i))
+				otsu_vars.append((var, i, th))
 				otsu_vars_only.append(var)
 			covariances = covariances + (otsu_vars)
 			covariances_only.append(otsu_vars_only)
@@ -79,11 +79,11 @@ class KdTree(object):
 		
 
 		hq.heapify(covariances)
-		fig, ax_lst = plt.subplots(1, 3)
-		ax_lst[0].scatter(range(len(covariances_only[0])), covariances_only[0])
-		ax_lst[1].scatter(range(len(covariances_only[1])), covariances_only[1])
-		ax_lst[2].scatter(range(len(covariances_only[2])), covariances_only[2])
-		plt.show()
+		#fig, ax_lst = plt.subplots(1, 3)
+		#ax_lst[0].scatter(range(len(covariances_only[0])), covariances_only[0])
+		#ax_lst[1].scatter(range(len(covariances_only[1])), covariances_only[1])
+		#ax_lst[2].scatter(range(len(covariances_only[2])), covariances_only[2])
+		#plt.show()
 
 		print(covariances[0])
 		return covariances
@@ -108,15 +108,16 @@ class KdTree(object):
 		cov = None
 		axis_final = None
 
-		axis = self.get_slices(image)[0][1]
+		slice_queue_instance = self.get_slices(image)
+		axis = slice_queue_instance[0][1]
 
-		sortted_array = image[image[:, axis].argsort()]
+		image = image[image[:, axis].argsort()]
 		
 
-		median_index = len(sortted_array)//2
-		median = image[median_index]
-		median_index_final = image[:, axis].tolist().index(median[axis])
-
+		#median_index = len(sortted_array)//2
+		median = slice_queue_instance[0][2]
+		median_index_final = image[:, axis].tolist().index(median)
+		
 
 		left_array_arg = image[:median_index_final]
 		right_array_arg = image[median_index_final:]
@@ -151,7 +152,7 @@ class KdTree(object):
 			right = cur_node.get_right()
 			ret = cur_node
 
-			if value[axis] < cur_val[axis]:
+			if value[axis] < cur_val:
 				#print(value[axis], cur_val, "left", str(axis))
 				cur_node = left
 			else:
