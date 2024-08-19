@@ -109,6 +109,10 @@ class KdTree(object):
 		axis_final = None
 
 		slice_queue_instance = self.get_slices(image)
+
+		if len(slice_queue_instance) == 0:
+			return None
+
 		axis = slice_queue_instance[0][1]
 
 		image = image[image[:, axis].argsort()]
@@ -116,11 +120,15 @@ class KdTree(object):
 
 		#median_index = len(sortted_array)//2
 		median = slice_queue_instance[0][2]
-		median_index_final = image[:, axis].tolist().index(median)
 		
 
-		left_array_arg = image[:median_index_final]
-		right_array_arg = image[median_index_final:]
+		left_array_arg = image[image[:, axis] < median]
+		right_array_arg = image[image[:, axis] >= median]
+
+		if len(right_array_arg) != 0:
+			median = right_array_arg[0]
+		else:
+			median = left_array_arg[-1]
 
 		median_final = median
 		axis_final = axis
@@ -152,7 +160,7 @@ class KdTree(object):
 			right = cur_node.get_right()
 			ret = cur_node
 
-			if value[axis] < cur_val:
+			if value[axis] < cur_val[axis]:
 				#print(value[axis], cur_val, "left", str(axis))
 				cur_node = left
 			else:
@@ -207,8 +215,8 @@ def main():
 	#print(m_list - np.array([0, 125, 239]))
 	#print(kd_tree.find_mapping_value([0, 125, 239]))
 	quantize_output = np.zeros(quantize_input.shape)
-	print(quantize_input[0,0])
-	print(kd_tree.find_mapping_value(quantize_input[0,0]))
+	print(quantize_input[350,250])
+	print(kd_tree.find_mapping_value(quantize_input[350,250]))
 
 	for i in range(quantize_input.shape[0]):
 		for j in range(quantize_input.shape[1]):
