@@ -183,46 +183,32 @@ class KdTree(object):
 			left_array_arg = image[image[:, axis] < threshold]
 			right_array_arg = image[image[:, axis] >= threshold]
 
-			if len(left_array_arg) > 0:
-				slice_queue_instance_left = self.get_slices(left_array_arg)
-				if not (slice_queue_instance_left is  None):
-					axis = slice_queue_instance_left[1][0]
-					image = left_array_arg[left_array_arg[:, axis].argsort()]
+			
+			for idx, sub_array in enumerate([left_array_arg, right_array_arg]):
+				if len(sub_array) > 0:
+					slice_queue_instance_sub = self.get_slices(sub_array)
+					if not (slice_queue_instance_sub is  None):
+						axis = slice_queue_instance_sub[1][0]
+						image = sub_array[sub_array[:, axis].argsort()]
 
-					threshold = slice_queue_instance_left[1][1]
+						threshold = slice_queue_instance_sub[1][1]
 
-					difference_array = np.absolute(image[:, axis]-threshold)
-					index = difference_array.argmin()
-					node_value = image[index]
-					mean = image.mean(axis=0)
+						difference_array = np.absolute(image[:, axis]-threshold)
+						index = difference_array.argmin()
+						node_value = image[index]
+						mean = image.mean(axis=0)
 
-					leftNode = KdNode(mean, axis, left_array_arg)
-					cur_kd_node.set_left(leftNode)
+						subNode = KdNode(mean, axis, sub_array)
+						self.median_list.append((subNode.value, i))
 
-					self.median_list.append((leftNode.value, i))
+						if idx == 0:
+							cur_kd_node.set_left(subNode)
+						else:
+							cur_kd_node.set_right(subNode)
 
-					heap_value = (-slice_queue_instance_left[0], (slice_queue_instance_left[1], leftNode))
-					hq.heappush(slice_heap, heap_value)
+						heap_value = (-slice_queue_instance_sub[0], (slice_queue_instance_sub[1], subNode))
+						hq.heappush(slice_heap, heap_value)
 
-
-			if len(right_array_arg) > 0:
-
-				slice_queue_instance_right = self.get_slices(right_array_arg)
-				if not (slice_queue_instance_right is  None):
-					axis = slice_queue_instance_right[1][0]
-					image = right_array_arg[right_array_arg[:, axis].argsort()]
-					threshold = slice_queue_instance_right[1][1]
-
-					difference_array = np.absolute(image[:, axis]-threshold)
-					index = difference_array.argmin()
-					node_value = image[index]
-					mean = image.mean(axis=0)
-					rightNode = KdNode(mean, axis, right_array_arg)
-					cur_kd_node.set_right(rightNode)
-					self.median_list.append((rightNode.value, i))
-
-					heap_value = (-slice_queue_instance_right[0], (slice_queue_instance_right[1], rightNode))
-					hq.heappush(slice_heap, heap_value)
 
 
 		
