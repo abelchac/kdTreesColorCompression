@@ -8,13 +8,14 @@ import heapq as hq
 #https://www.ri.cmu.edu/pub_files/pub1/moore_andrew_1991_1/moore_andrew_1991_1.pdf
 class KdNode(object):
 	"""docstring for KdTree"""
-	def __init__(self, value, axis, image_view):
+	def __init__(self, value, axis, image_view, depth=0):
 		super(KdNode, self).__init__()
 		self.value = value
 		self.axis = axis
 		self._left = None
 		self._right = None
 		self.image_view = image_view
+		self.depth = depth
 
 
 	def get_left(self):
@@ -44,6 +45,8 @@ class KdTree(object):
 		self.axis_list = []
 		#self.slice_queue = self.get_slices(self.image)
 		self.slice_heap = None
+		self.tree_dict = {}
+		self.tree_dict_depth = {}
 		self.kd_tree = self.create_kd_tree(self.image, self.slices, self.image_org)
 		
 
@@ -108,23 +111,6 @@ class KdTree(object):
 						if len(covariances_only[i]) >= len(covariances_only[i-1]):
 							ret_cov = otsu_vars[cov_arg_index]
 							var_split_best_dif = temp_cov - var_split
-		
-			#print(ret_cov)
-
-		# fig, ax_lst = plt.subplots(2, 3)
-		# bins = np.arange(0, 255, 1) # fixed bin size
-		# ax_lst[0, 0].axis(xmin=min(image[:, 0])-5, xmax=max(image[:, 0])+5)
-		# ax_lst[0, 1].axis(xmin=min(image[:, 1])-5, xmax=max(image[:, 1])+5)
-		# ax_lst[0, 2].axis(xmin=min(image[:, 2])-5, xmax=max(image[:, 2])+5)
-		# ax_lst[0, 0].hist(image[:, 0], bins=bins, alpha=0.5)
-		# ax_lst[0, 1].hist(image[:, 1], bins=bins, alpha=0.5)
-		# ax_lst[0, 2].hist(image[:, 2], bins=bins, alpha=0.5)
-
-		# ax_lst[1, 0].scatter(range(len(covariances_only[0])), covariances_only[0])
-		# ax_lst[1, 1].scatter(range(len(covariances_only[1])), covariances_only[1])
-		# ax_lst[1, 2].scatter(range(len(covariances_only[2])), covariances_only[2])
-		#print(ret_cov, var_split_best_dif)
-		#plt.show()
 
 		
 		return ret_cov
@@ -162,7 +148,7 @@ class KdTree(object):
 		difference_array = np.absolute(image[:, axis]-threshold)
 		index = difference_array.argmin()
 
-		headNode = KdNode(image.mean(axis=0), axis, image_cur)
+		headNode = KdNode(image.mean(axis=0), axis, image_cur, 0)
 		cur_node = headNode
 
 		heap_value = (slice_queue_instance[0], (slice_queue_instance[1], headNode))
@@ -198,7 +184,15 @@ class KdTree(object):
 						node_value = image[index]
 						mean = image.mean(axis=0)
 
-						subNode = KdNode(mean, axis, sub_array)
+
+						subNode = KdNode(mean, axis, sub_array, cur_kd_node.depth + 1)
+
+
+						self.tree_dict[tuple(mean)] = self.tree_dict.get(tuple(mean), [])
+						self.tree_dict[tuple(cur_kd_node.value)] = self.tree_dict.get(tuple(cur_kd_node.value), []) + [tuple(mean)]
+						self.tree_dict_depth[tuple(cur_kd_node.value)] = cur_kd_node.depth
+						self.tree_dict_depth[tuple(mean)] = cur_kd_node.depth + 1
+
 						self.median_list.append((subNode.value, i))
 
 						if idx == 0:
@@ -210,8 +204,6 @@ class KdTree(object):
 						hq.heappush(slice_heap, heap_value)
 
 
-
-		
 		return headNode
 
 
@@ -276,8 +268,40 @@ class KdTree(object):
 		
 		plt.show()
 
+	def visualize_kd_tree(self):
+		from pyvis.network import Network
+		import networkx as nx
+
+		net = Network(notebook = False, layout="hierarchical")
+		for key in self.tree_dict.keys():
+			level = self.tree_dict_depth[key]
+			if len(self.tree_dict[key]) == 0:
+				net.add_node(str(key), label = str(key), color="rgb"+str(key), level=level)
+			else:
+				net.add_node(str(key), label = "_", level=level)
+
+				
+		for key in self.tree_dict.keys():
+			for edge in self.tree_dict[key]:
+				net.add_edge(str(edge), str(key), arrows = "from")
+				
+		#nxg = nx.complete_graph(10)
+		#pos = nx.hierarchical_layout(net.get_nodes())
+		#print(pos)
+		#for node in net.get_nodes():
+		#  net.get_node(node)['x']=pos[node][0]
+		#  net.get_node(node)['y']=-pos[node][1] #the minus is needed here to respect networkx y-axis convention 
+		  #net.get_node(node)['physics']=False
+		  #net.get_node(node)['label']=str(node) #set the node label as a string so that it can be displayed
+		#net.toggle_physics(False)
+
+
+		net.show("mygraph.html")
+		pass
+
 def main():
 	quantize_input = cv2.imread("quantize_input.png")
+	quantize_input = cv2.cvtColor(quantize_input, cv2.COLOR_BGR2RGB)
 	kd_tree = KdTree(quantize_input, 24)
 	#kd_tree.visualize_kd_tree()
 	# m_list = [m for m, d in kd_tree.median_list]
@@ -287,6 +311,8 @@ def main():
 	m_list = [m[1][1].value for m in kd_tree.slice_heap]
 	m_list = np.vstack(m_list)
 	print(m_list)
+	print(kd_tree.tree_dict)
+	kd_tree.visualize_kd_tree()
 	#print(m_list - np.array([0, 125, 239]))
 	#print(kd_tree.find_mapping_value([0, 125, 239]))
 	quantize_output = np.zeros(quantize_input.shape)
@@ -301,7 +327,7 @@ def main():
 			#pass
 	
 	quantize_output = quantize_output.astype('uint8') 
-	#quantize_output = cv2.cvtColor(quantize_output, cv2.COLOR_BGR2RGB)
+	quantize_output = cv2.cvtColor(quantize_output, cv2.COLOR_RGB2BGR)
 	print(quantize_input[350,250])
 	print("Quantized")
 	print(quantize_output[350,250])
