@@ -49,17 +49,17 @@ class KdTree(object):
 
 
 		def otsu_intraclass_variance(image, threshold):
-		    """
-		    Otsu's intra-class variance.
-		    If all pixels are above or below the threshold, this will throw a warning that can safely be ignored.
-		    """
-		    return np.nansum(
-		        [
-		            np.mean(cls) * np.var(image, where=cls)
-		            #   weight   ·  intra-class variance
-		            for cls in [image >= threshold, image < threshold]
-		        ]
-		    ) 
+			"""
+			Otsu's intra-class variance.
+			If all pixels are above or below the threshold, this will throw a warning that can safely be ignored.
+			"""
+			return np.nansum(
+				[
+					np.mean(cls) * np.var(image, where=cls)
+					#   weight   ·  intra-class variance
+					for cls in [image >= threshold, image < threshold]
+				]
+			) 
 
 		covariances = []
 		covariances_only = []
@@ -81,26 +81,27 @@ class KdTree(object):
 			covariances = covariances + otsu_vars
 			covariances_only += otsu_vars_only
 
-			if len(covariances) > 0 and len(otsu_vars_only) > 0:
-					cov_array = np.asarray(otsu_vars_only)
-					cov_argsort = np.argsort(cov_array)
-					index = -1
-					temp_cov = otsu_vars[cov_argsort[index]][0]
-					thresh = otsu_vars[cov_argsort[index]][1][1]
-					print(otsu_vars[cov_argsort[index]])
-					temp_image_left =  image[image[:,i] > thresh]
-					temp_image_right =  image[image[:,i] > thresh]
-					var_split = np.mean(temp_image_left) * np.var(temp_image_left) +   np.mean(temp_image_right) * np.var(temp_image_right)
-					var_split_best_dif = temp_cov - var_split
+			if len(otsu_vars_only) > 0:
+				cov_array = np.asarray(otsu_vars_only)
+				cov_arg_index = np.argmin(cov_array)
+				index = -1
+				temp_cov = otsu_vars[cov_arg_index][0]
+				thresh = otsu_vars[cov_arg_index][1][1]
+				print(otsu_vars[cov_arg_index])
+				temp_image_left =  image[image[:,i] > thresh]
+				temp_image_right =  image[image[:,i] > thresh]
+				var_split = np.mean(temp_image_left) * np.var(temp_image_left) +   np.mean(temp_image_right) * np.var(temp_image_right)
+				
 
-			if ret_cov is None:
+				if ret_cov is None:
 					#print(np.array(covariances)[cov_argsort[:5]])
-					ret_cov = otsu_vars[cov_argsort[0]]
-			else:
-				if len(covariances) > 0 and len(otsu_vars_only) > 0:
-					if var_split_best_dif < (temp_cov - var_split):
-						ret_cov = otsu_vars[cov_argsort[0]]
-						var_split_best_dif = temp_cov - var_split
+					ret_cov = otsu_vars[cov_arg_index]
+					var_split_best_dif = temp_cov - var_split
+				else:
+					if len(covariances) > 0 and len(otsu_vars_only) > 0:
+						if var_split_best_dif < (temp_cov - var_split):
+							ret_cov = otsu_vars[cov_arg_index]
+							var_split_best_dif = temp_cov - var_split
 
 		
 			#print(ret_cov)
