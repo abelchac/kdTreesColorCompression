@@ -43,7 +43,9 @@ class KdTree(object):
 		self.median_list = []
 		self.axis_list = []
 		#self.slice_queue = self.get_slices(self.image)
+		self.slice_heap = None
 		self.kd_tree = self.create_kd_tree(self.image, self.slices, self.image_org)
+		
 
 	def get_slices(self, image=None):
 
@@ -64,7 +66,7 @@ class KdTree(object):
 		covariances = []
 		covariances_only = []
 		ret_cov = None
-		var_split_best = None
+		var_split_best_dif = None
 
 		for i in range(3):
 			#print(image.shape, np.min(image[:,i]))
@@ -72,44 +74,56 @@ class KdTree(object):
 			max_range = np.max(image[:,i])
 			otsu_vars = []
 			otsu_vars_only = []
-
+			#print(min_range, max_range)
 			for th in range(min_range, max_range):
+
 				var = otsu_intraclass_variance(image[:,i], th)
 				otsu_vars.append((var, (i, th)))
 				otsu_vars_only.append(var)
 			
 			covariances = covariances + otsu_vars
-			covariances_only += otsu_vars_only
+			covariances_only.append(otsu_vars_only)
 
 			if len(otsu_vars_only) > 0:
 				cov_array = np.asarray(otsu_vars_only)
 				cov_arg_index = np.argmin(cov_array)
 				index = -1
-				temp_cov = otsu_vars[cov_arg_index][0]
+				#temp_cov = otsu_vars[cov_arg_index][0]
+				temp_cov =  np.mean(image[:,i]) * np.var(image[:,i])
 				thresh = otsu_vars[cov_arg_index][1][1]
-				print(otsu_vars[cov_arg_index])
-				temp_image_left =  image[image[:,i] > thresh]
-				temp_image_right =  image[image[:,i] > thresh]
+				
+				temp_image_left =  image[image[:,i] < thresh][:,i]
+				temp_image_right =  image[image[:,i] >= thresh][:,i]
 				var_split = np.mean(temp_image_left) * np.var(temp_image_left) +   np.mean(temp_image_right) * np.var(temp_image_right)
 				
-
 				if ret_cov is None:
 					#print(np.array(covariances)[cov_argsort[:5]])
 					ret_cov = otsu_vars[cov_arg_index]
 					var_split_best_dif = temp_cov - var_split
 				else:
-					if len(covariances) > 0 and len(otsu_vars_only) > 0:
-						if var_split_best_dif < (temp_cov - var_split):
+					if var_split_best_dif < (temp_cov - var_split):
+						ret_cov = otsu_vars[cov_arg_index]
+						var_split_best_dif = temp_cov - var_split
+					elif var_split_best_dif == (temp_cov - var_split):
+						if len(covariances_only[i]) >= len(covariances_only[i-1]):
 							ret_cov = otsu_vars[cov_arg_index]
 							var_split_best_dif = temp_cov - var_split
-
 		
 			#print(ret_cov)
 
-		#fig, ax_lst = plt.subplots(1, 3)
-		#ax_lst[0].scatter(range(len(covariances_only[0])), covariances_only[0])
-		#ax_lst[1].scatter(range(len(covariances_only[1])), covariances_only[1])
-		#ax_lst[2].scatter(range(len(covariances_only[2])), covariances_only[2])
+		# fig, ax_lst = plt.subplots(2, 3)
+		# bins = np.arange(0, 255, 1) # fixed bin size
+		# ax_lst[0, 0].axis(xmin=min(image[:, 0])-5, xmax=max(image[:, 0])+5)
+		# ax_lst[0, 1].axis(xmin=min(image[:, 1])-5, xmax=max(image[:, 1])+5)
+		# ax_lst[0, 2].axis(xmin=min(image[:, 2])-5, xmax=max(image[:, 2])+5)
+		# ax_lst[0, 0].hist(image[:, 0], bins=bins, alpha=0.5)
+		# ax_lst[0, 1].hist(image[:, 1], bins=bins, alpha=0.5)
+		# ax_lst[0, 2].hist(image[:, 2], bins=bins, alpha=0.5)
+
+		# ax_lst[1, 0].scatter(range(len(covariances_only[0])), covariances_only[0])
+		# ax_lst[1, 1].scatter(range(len(covariances_only[1])), covariances_only[1])
+		# ax_lst[1, 2].scatter(range(len(covariances_only[2])), covariances_only[2])
+		#print(ret_cov, var_split_best_dif)
 		#plt.show()
 
 		
@@ -137,7 +151,7 @@ class KdTree(object):
 
 
 		slice_heap = []
-
+		self.slice_heap = slice_heap
 		image_cur = self.image
 
 		slice_queue_instance = self.get_slices(image_cur)
@@ -160,11 +174,6 @@ class KdTree(object):
 			print("CURNODE", cur_node)
 			(variance, ((axis, threshold) , cur_kd_node)) = cur_node
 
-			
-
-			if slice_queue_instance is None:
-				return None
-
 		
 			image = cur_kd_node.image_view[cur_kd_node.image_view[:, axis].argsort()]
 			
@@ -185,12 +194,14 @@ class KdTree(object):
 					difference_array = np.absolute(image[:, axis]-threshold)
 					index = difference_array.argmin()
 					node_value = image[index]
-					leftNode = KdNode(node_value, axis, left_array_arg)
+					mean = image.mean(axis=0)
+
+					leftNode = KdNode(mean, axis, left_array_arg)
 					cur_kd_node.set_left(leftNode)
 
 					self.median_list.append((leftNode.value, i))
 
-					heap_value = (slice_queue_instance_left[0], (slice_queue_instance_left[1], leftNode))
+					heap_value = (-slice_queue_instance_left[0], (slice_queue_instance_left[1], leftNode))
 					hq.heappush(slice_heap, heap_value)
 
 
@@ -205,17 +216,16 @@ class KdTree(object):
 					difference_array = np.absolute(image[:, axis]-threshold)
 					index = difference_array.argmin()
 					node_value = image[index]
-					rightNode = KdNode(node_value, axis, right_array_arg)
+					mean = image.mean(axis=0)
+					rightNode = KdNode(mean, axis, right_array_arg)
 					cur_kd_node.set_right(rightNode)
 					self.median_list.append((rightNode.value, i))
 
-					heap_value = (slice_queue_instance_right[0], (slice_queue_instance_right[1], rightNode))
+					heap_value = (-slice_queue_instance_right[0], (slice_queue_instance_right[1], rightNode))
 					hq.heappush(slice_heap, heap_value)
 
 
-
-
-
+		
 		return headNode
 
 
@@ -282,16 +292,22 @@ class KdTree(object):
 
 def main():
 	quantize_input = cv2.imread("quantize_input.png")
-	kd_tree = KdTree(quantize_input, 5)
+	kd_tree = KdTree(quantize_input, 24)
 	#kd_tree.visualize_kd_tree()
-	m_list = [m for m, d in kd_tree.median_list]
+	# m_list = [m for m, d in kd_tree.median_list]
+	# m_list = np.vstack(m_list)
+	# print(m_list)
+	
+	m_list = [m[1][1].value for m in kd_tree.slice_heap]
 	m_list = np.vstack(m_list)
 	print(m_list)
 	#print(m_list - np.array([0, 125, 239]))
 	#print(kd_tree.find_mapping_value([0, 125, 239]))
 	quantize_output = np.zeros(quantize_input.shape)
-	print(quantize_input[350,250])
-	print(kd_tree.find_mapping_value(quantize_input[350,250]))
+	print("input", quantize_input[350,250])
+	print("output", kd_tree.find_mapping_value(quantize_input[350,250]))
+	print("input", quantize_input[190,190])
+	print("output", kd_tree.find_mapping_value(quantize_input[190,190]))
 
 	for i in range(quantize_input.shape[0]):
 		for j in range(quantize_input.shape[1]):
@@ -303,8 +319,8 @@ def main():
 	print(quantize_input[350,250])
 	print("Quantized")
 	print(quantize_output[350,250])
-	#plt.imshow(quantize_output)
-	#plt.show()
+	# plt.imshow(quantize_output)
+	# plt.show()
 	cv2.imshow("quant", quantize_output)
 	cv2.waitKey(0)
 
