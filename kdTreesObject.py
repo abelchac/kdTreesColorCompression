@@ -34,16 +34,16 @@ class KdNode(object):
 
 class KdTree(object):
 	"""docstring for KdTree"""
-	def __init__(self, image, colors):
+	def __init__(self, image, slices):
 		super(KdTree, self).__init__()
 		self.image_org = image.copy()
 		self.image = image.reshape(-1, 3)
 
-		self.colors = colors
+		self.slices = slices
 		self.median_list = []
 		self.axis_list = []
-		self.slice_queue = self.get_slices(self.image_org)
-		self.kd_tree = self.create_kd_tree(self.image, self.colors, self.image_org)
+		#self.slice_queue = self.get_slices(self.image)
+		self.kd_tree = self.create_kd_tree(self.image, self.slices, self.image_org)
 
 	def get_slices(self, image=None):
 
@@ -63,6 +63,9 @@ class KdTree(object):
 
 		covariances = []
 		covariances_only = []
+		ret_cov = None
+		var_split_best = None
+
 		for i in range(3):
 			#print(image.shape, np.min(image[:,i]))
 			min_range = np.min(image[:,i]) + 1
@@ -74,14 +77,32 @@ class KdTree(object):
 				var = otsu_intraclass_variance(image[:,i], th)
 				otsu_vars.append((var, (i, th)))
 				otsu_vars_only.append(var)
-			covariances = covariances + (otsu_vars)
+			
+			covariances = covariances + otsu_vars
 			covariances_only += otsu_vars_only
+
+			if len(covariances) > 0 and len(otsu_vars_only) > 0:
+					cov_array = np.asarray(otsu_vars_only)
+					cov_argsort = np.argsort(cov_array)
+					index = -1
+					temp_cov = otsu_vars[cov_argsort[index]][0]
+					thresh = otsu_vars[cov_argsort[index]][1][1]
+					print(otsu_vars[cov_argsort[index]])
+					temp_image_left =  image[image[:,i] > thresh]
+					temp_image_right =  image[image[:,i] > thresh]
+					var_split = np.mean(temp_image_left) * np.var(temp_image_left) +   np.mean(temp_image_right) * np.var(temp_image_right)
+					var_split_best_dif = temp_cov - var_split
+
+			if ret_cov is None:
+					#print(np.array(covariances)[cov_argsort[:5]])
+					ret_cov = otsu_vars[cov_argsort[0]]
+			else:
+				if len(covariances) > 0 and len(otsu_vars_only) > 0:
+					if var_split_best_dif < (temp_cov - var_split):
+						ret_cov = otsu_vars[cov_argsort[0]]
+						var_split_best_dif = temp_cov - var_split
+
 		
-		
-		ret_cov = None
-		if len(covariances) > 0:
-			cov_array = np.asarray(covariances_only)
-			ret_cov = covariances[cov_array.argmin()]
 			#print(ret_cov)
 
 		#fig, ax_lst = plt.subplots(1, 3)
@@ -94,10 +115,10 @@ class KdTree(object):
 		return ret_cov
 
 
-	def create_kd_tree(self, image, colors, crop_image=None):
+	def create_kd_tree(self, image, slices, crop_image=None):
 		headNode = None
 
-		if colors <= 0:
+		if slices <= 0:
 			return None
 
 		if image is None:
@@ -116,21 +137,23 @@ class KdTree(object):
 
 		slice_heap = []
 
-		image_cur = image
+		image_cur = self.image
 
 		slice_queue_instance = self.get_slices(image_cur)
 
 		axis = slice_queue_instance[1][0]
 		image = image[image[:, axis].argsort()]
 		threshold = slice_queue_instance[1][1]
+		difference_array = np.absolute(image[:, axis]-threshold)
+		index = difference_array.argmin()
 
-		headNode = KdNode(threshold, axis, image_cur)
+		headNode = KdNode(image.mean(axis=0), axis, image_cur)
 		cur_node = headNode
 
 		heap_value = (slice_queue_instance[0], (slice_queue_instance[1], headNode))
 		hq.heappush(slice_heap, heap_value)
 
-		for i in range(colors):
+		for i in range(slices):
 
 			cur_node = hq.heappop(slice_heap)
 			print("CURNODE", cur_node)
@@ -142,38 +165,51 @@ class KdTree(object):
 				return None
 
 		
-			image = cur_kd_node.image_view[image[:, axis].argsort()]
+			image = cur_kd_node.image_view[cur_kd_node.image_view[:, axis].argsort()]
 			
 			self.axis_list.append(axis)
-			self.median_list.append((threshold, colors))
+			
 
 			left_array_arg = image[image[:, axis] < threshold]
 			right_array_arg = image[image[:, axis] >= threshold]
 
 			if len(left_array_arg) > 0:
 				slice_queue_instance_left = self.get_slices(left_array_arg)
+				if not (slice_queue_instance_left is  None):
+					axis = slice_queue_instance_left[1][0]
+					image = left_array_arg[left_array_arg[:, axis].argsort()]
 
-				axis = slice_queue_instance_left[1][0]
-				#image = left_array_arg[left_array_arg[:, axis].argsort()]
-				threshold = slice_queue_instance_left[1][1]
-				leftNode = KdNode(threshold, axis, left_array_arg)
-				cur_kd_node.set_left(leftNode)
+					threshold = slice_queue_instance_left[1][1]
 
-				heap_value = (slice_queue_instance_left[0], (slice_queue_instance_left[1], leftNode))
-				print(heap_value)
-				hq.heappush(slice_heap, heap_value)
+					difference_array = np.absolute(image[:, axis]-threshold)
+					index = difference_array.argmin()
+					node_value = image[index]
+					leftNode = KdNode(node_value, axis, left_array_arg)
+					cur_kd_node.set_left(leftNode)
+
+					self.median_list.append((leftNode.value, i))
+
+					heap_value = (slice_queue_instance_left[0], (slice_queue_instance_left[1], leftNode))
+					hq.heappush(slice_heap, heap_value)
+
 
 			if len(right_array_arg) > 0:
+
 				slice_queue_instance_right = self.get_slices(right_array_arg)
+				if not (slice_queue_instance_right is  None):
+					axis = slice_queue_instance_right[1][0]
+					image = right_array_arg[right_array_arg[:, axis].argsort()]
+					threshold = slice_queue_instance_right[1][1]
 
-				axis = slice_queue_instance_right[1][0]
-				image = left_array_arg[left_array_arg[:, axis].argsort()]
-				threshold = slice_queue_instance_right[1][1]
-				rightNode = KdNode(threshold, axis, right_array_arg)
-				cur_kd_node.set_right(rightNode)
+					difference_array = np.absolute(image[:, axis]-threshold)
+					index = difference_array.argmin()
+					node_value = image[index]
+					rightNode = KdNode(node_value, axis, right_array_arg)
+					cur_kd_node.set_right(rightNode)
+					self.median_list.append((rightNode.value, i))
 
-				heap_value = (slice_queue_instance_right[0], (slice_queue_instance_right[1], rightNode))
-				hq.heappush(slice_heap, heap_value)
+					heap_value = (slice_queue_instance_right[0], (slice_queue_instance_right[1], rightNode))
+					hq.heappush(slice_heap, heap_value)
 
 
 
@@ -183,12 +219,12 @@ class KdTree(object):
 
 
 	def find_mapping_value(self, value):
-		depth_limit = self.colors
+		depth_limit = self.slices
 		cur_node = self.kd_tree
 		#value = None
 		dimension = 0
 		ret = None
-		pixel_values_ret = [value[0], value[1], value[2]]
+		pixel_values_ret = [0, 0, 0]
 
 		while not cur_node is None:
 			cur_val = cur_node.value
@@ -196,9 +232,9 @@ class KdTree(object):
 			left = cur_node.get_left()
 			right = cur_node.get_right()
 			ret = cur_node
-			pixel_values_ret[axis] = cur_val
+			pixel_values_ret = cur_val
 
-			if value[axis] < cur_val:
+			if value[axis] < cur_val[axis]:
 				#print(value[axis], cur_val, "left", str(axis))
 				cur_node = left
 			else:
@@ -259,6 +295,7 @@ def main():
 	for i in range(quantize_input.shape[0]):
 		for j in range(quantize_input.shape[1]):
 			quantize_output[i, j] = kd_tree.find_mapping_value(quantize_input[i,j])
+			#pass
 	
 	quantize_output = quantize_output.astype('uint8') 
 	#quantize_output = cv2.cvtColor(quantize_output, cv2.COLOR_BGR2RGB)
